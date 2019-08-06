@@ -95,8 +95,8 @@ proc unpack*(opts: Options, pkg: PackageRef) =
   if not existsDir(dir):
     fatal("Cannot unpack to {dir}: directory does not exist.")
 
-  if not loadPackageFile(pkg, getPackageFile(dir)):
-    fatal(dir & " is not a nasher project. Please run nasher init.")
+  if opts["command"] == "init":
+    discard loadPackageFile(pkg, opts, getPackageFile(dir))
 
   # If the user has specified a file to unpack, use that. Otherwise, look for
   # the installed target file.
