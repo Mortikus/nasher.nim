@@ -303,7 +303,7 @@ proc initDependency: Dependency =
 
 proc addDependency(pkg: PackageRef, depend: var Dependency) =
   ## Adds ``depend`` to ``pkg``'s list of dependencies.
-  if not depend.name.isNilOrWhitespace:
+  if not depend.name.isEmptyOrWhitespace:
     pkg.depends[depend.name] = depend
   depend = initDependency()
 
@@ -411,7 +411,6 @@ proc loadDependencyPaths(pkg: PackageRef, opts: Options) =
 proc resolveSources(sources: var seq[string], opts: Options) =
   ## Resolves all variables in each source in ``sources`` using the values in
   ## ``opts``.
-  var result: seq[string]
   for source in sources.mitems:
     try:
       source = source % opts
