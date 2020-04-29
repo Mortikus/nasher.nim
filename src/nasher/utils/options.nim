@@ -413,7 +413,7 @@ proc resolveSources(sources: var seq[string], opts: Options) =
   ## ``opts``.
   for source in sources.mitems:
     try:
-      source = source % opts
+      source = expandPath(source % opts)
     except ValueError:
       let
         msg = getCurrentExceptionMsg()
