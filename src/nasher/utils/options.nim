@@ -13,19 +13,21 @@ type
     authors*, includes*, excludes*, flags*, updated*: seq[string]
     targets*: seq[Target]
     rules*: seq[Rule]
+    aliases*: StringTableRef
 
   PackageRef* = ref Package
 
   Target = object
     name*, file*, description*: string
     includes*, excludes*, flags*: seq[string]
+    aliases*: StringTableRef
 
   Rule* = tuple[pattern, dir: string]
 
 const
   nasherCommands =
     ["init", "list", "config", "convert", "compile", "pack", "install", "play",
-     "test", "serve", "unpack"]
+     "test", "serve", "unpack", "alias"]
 
 proc `[]=`*[T: int | bool](opts: Options, key: string, value: T) =
   ## Overloaded ``[]=`` operator that converts value to a string before setting
@@ -85,13 +87,18 @@ proc getPackageRoot*(baseDir = getCurrentDir()): string =
     if existsFile(dir / "nasher.cfg"):
       return dir
 
-proc getConfigFile*(pkgDir = ""): string =
+proc getConfigFile*(pkgDir = "", file = "user.cfg"): string =
   ## Returns the configuration file for the package owning ``pkgDir``, or the
   ## global configuration file if ``pkgDir`` is blank.
   if pkgDir.len > 0:
-    getPackageRoot(pkgDir) / ".nasher" / "user.cfg"
+    getPackageRoot(pkgDir) / ".nasher" / file
   else:
-    getConfigDir() / "nasher" / "user.cfg"
+    getConfigDir() / "nasher" / file
+
+proc getAliasFile*(pkgDir = ""): string =
+  ## Returns the alias file for the package owning ``pkgDir``, or the global
+  ## alias file if ``pkgDir`` is blank.
+  getConfigFile(pkgDir, "aliases.cfg")
 
 proc getPackageFile*(baseDir = getCurrentDir()): string =
   getPackageRoot(baseDir) / "nasher.cfg"
@@ -99,14 +106,14 @@ proc getPackageFile*(baseDir = getCurrentDir()): string =
 proc existsPackageFile*(dir = getCurrentDir()): bool =
   existsFile(getPackageFile(dir))
 
-proc parseConfigFile*(opts: Options, file: string) =
+const prohibitedOpts* =
+  ["command", "config", "level", "directory", "file", "target", "targets",
+   "help", "version", "key", "value"]
+
+proc parseConfigFile*(opts: Options, file: string, alias = false) =
   ## Loads all all values from ``file`` into opts. This provides user-defined
   ## defaults to options. It runs before the command-line options are processed,
   ## so the user can override these commands as needed.
-  const prohibited =
-    ["command", "config", "level", "directory", "file", "target", "targets",
-     "help", "version"]
-
   let fileStream = newFileStream(file)
 
   if fileStream.isNil:
@@ -119,12 +126,14 @@ proc parseConfigFile*(opts: Options, file: string) =
     case e.kind
     of cfgEof: break
     of cfgKeyValuePair, cfgOption:
-      if e.key notin prohibited:
+      if not alias and e.key in prohibitedOpts:
+        warning("Skipping prohibited key name " & e.key.escape)
+      else:
         opts[e.key] = e.value
     else: discard
   close(p)
 
-proc writeConfigFile*(opts: Options, file: string) =
+proc writeConfigFile*(opts: Options, file: string, alias = false) =
   ## Converts ``opts`` into a config file named ``file``.
   let
     keys = toSeq(opts.keys).sorted
@@ -134,7 +143,11 @@ proc writeConfigFile*(opts: Options, file: string) =
     createDir(dir)
     var s = openFileStream(file, fmWrite)
     for key in keys:
-      s.writeLine(key & " = " & opts[key].escape)
+      if not alias and key in prohibitedOpts:
+        warning("Skipping prohibited key name " & key.escape)
+      else:
+        let keyName = if key.validIdentifier: key else: key.escape
+        s.writeLine(keyName & " = " & opts[key].escape)
     s.close
   except:
     fatal(getCurrentExceptionMsg())
@@ -157,7 +170,7 @@ proc parseCmdLine(opts: Options) =
       case opts.get("command")
       of "init":
         opts.putKeyOrHelp("directory", "file", key)
-      of "config":
+      of "config", "alias":
         opts.putKeyOrHelp("key", "value", key)
       of "list":
         opts.putKeyOrHelp("target", key)
@@ -192,7 +205,7 @@ proc parseCmdLine(opts: Options) =
         cli.setForceAnswer(Default)
       else:
         case opts.get("command")
-        of "config":
+        of "config", "alias":
           case key
           of "g", "get": opts.putKeyOrHelp("config", "get")
           of "s", "set": opts.putKeyOrHelp("config", "set")
@@ -227,9 +240,9 @@ proc dumpOptions(opts: Options) =
   debug("Force:", $cli.getForceAnswer())
   stdout.write("\n")
 
-proc newOptions*(file: string): Options =
-  result = newStringTable(modeStyleInsensitive)
-  result.parseConfigFile(file)
+proc newOptions*(file: string, alias = false): Options =
+  result = newStringTable(if alias: modeCaseSensitive else: modeStyleInsensitive)
+  result.parseConfigFile(file, alias)
 
 proc getOptions*: Options =
   ## Returns a string table of options obtained from the config file and command
@@ -253,6 +266,13 @@ proc getOptions*: Options =
     result["noConvert"] = true
 
   result.dumpOptions
+
+proc getAliases: Options =
+  ## Returns a string table of path aliases from the config file. Aliases are
+  ## case and style sensitive (i.e., "someValue" != "some_value").
+  result = newStringTable(modeCaseSensitive)
+  result.parseConfigFile(getAliasFile(), true)
+  result.parseConfigFile(getAliasFile(getCurrentDir()), true)
 
 proc verifyBinaries*(opts: Options) =
   ## Verifies that the required binaries are available to nasher.
@@ -291,6 +311,7 @@ proc verifyBinaries*(opts: Options) =
 
 proc initTarget: Target =
   result.name = ""
+  result.aliases = newStringTable(modeCaseSensitive)
 
 proc addTarget(pkg: PackageRef, target: var Target) =
   ## Adds target to pkg's list of targets. If target has no items in the include
@@ -304,6 +325,8 @@ proc addTarget(pkg: PackageRef, target: var Target) =
       target.flags = pkg.flags
     pkg.targets.add(target)
   target = initTarget()
+  for alias, path in pkg.aliases:
+    target.aliases[alias] = path
 
 proc parsePackageFile(pkg: PackageRef, file: string) =
   ## Loads the configuration for the package from file.
@@ -340,8 +363,7 @@ proc parsePackageFile(pkg: PackageRef, file: string) =
         of "source", "include": pkg.includes.add(e.value)
         of "exclude": pkg.excludes.add(e.value)
         of "flags": pkg.flags.add(e.value)
-        else:
-          error(fmt"Unknown key/value pair: {key} = {e.value}")
+        else: pkg.aliases[e.key] = e.value.expandPath(true)
       of "target":
         case key
         of "name": target.name = e.value.normalize
@@ -350,8 +372,7 @@ proc parsePackageFile(pkg: PackageRef, file: string) =
         of "source", "include": target.includes.add(e.value)
         of "exclude": target.excludes.add(e.value)
         of "flags": target.flags.add(e.value)
-        else:
-          error(fmt"Unknown key/value pair '{key} = {e.value}'")
+        else: target.aliases[e.key] = e.value.expandPath(true)
       of "rules":
         pkg.rules.add((e.key, e.value))
       else:
@@ -375,6 +396,10 @@ proc dumpPackage(pkg: PackageRef) =
   debug("Version:", pkg.version)
   debug("URL:", pkg.url)
   debug("Authors:", pkg.authors.join("\n"))
+
+  for alias, value in pkg.aliases.pairs:
+    debug("Alias:", fmt"${alias} -> {value}")
+
   debug("Includes:", pkg.includes.join("\n"))
   debug("Excludes:", pkg.excludes.join("\n"))
   debug("Flags:", pkg.flags.join("\n"))
@@ -387,17 +412,55 @@ proc dumpPackage(pkg: PackageRef) =
     debug("Target:", target.name)
     debug("Description:", target.description)
     debug("File:", target.file)
+    for alias, value in target.aliases.pairs:
+      debug("Alias:", fmt"${alias} -> {value}")
     debug("Includes:", target.includes.join("\n"))
     debug("Excludes:", target.excludes.join("\n"))
     debug("Flags:", target.flags.join("\n"))
 
   stdout.write("\n")
 
+proc resolveSource*(path: var string, aliases: StringTableRef) =
+  ## Expands ``path`` using the aliases in ``aliases``. Throws an error if a
+  ## variable could not be resolved. Nested variables are not supported.
+  try:
+    path = path % aliases
+  except ValueError:
+    let
+      msg = getCurrentExceptionMsg()
+      token = msg.split[^1]
+    fatal(fmt"Unknown variable {token} in {path}")
+
+proc resolveSources*(paths: var seq[string], aliases: StringTableRef) =
+  ## Expands each path in ``paths`` using the aliases in ``aliases``. Throws an
+  ## error if a variable could not be resolved. Nested variables are not
+  ## supported.
+  for path in paths.mitems:
+    path.resolveSource(aliases)
+
 proc loadPackageFile*(pkg: PackageRef, file: string): bool =
   ## Initializes ``pkg`` with the contents of ``file``. Returns whether the
   ## operation was successful.
   if existsFile(file):
+    pkg.aliases = newStringTable(modeCaseSensitive)
     pkg.parsePackageFile(file)
+
+    # Load user aliases. These overwrite package and target aliases
+    let aliases = getAliases()
+    for alias, path in aliases.pairs:
+      pkg.aliases[alias] = path
+
+    for target in pkg.targets.mitems:
+      for alias, path in aliases.pairs:
+        target.aliases[alias] = path
+
+      # These must stay constant
+      target.aliases["target"] = target.name
+      target.aliases["file"] = target.file
+
+      target.includes.resolveSources(target.aliases)
+      target.excludes.resolveSources(target.aliases)
+
     pkg.dumpPackage
     result = true
 
