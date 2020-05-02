@@ -5,9 +5,24 @@ from unicode import toLower
 
 from glob import walkGlob
 
-proc help*(helpMessage: string, errorCode = QuitSuccess) =
+const
+  helpGlobal = """
+
+  Global Options:
+    -h, --help     Display help for nasher or one of its commands
+    -v, --version  Display version information
+
+  Logging:
+    --debug        Enable debug logging
+    --verbose      Enable additional messages about normal operation
+    --quiet        Disable all logging except errors
+    --no-color     Disable color output (automatic if not a tty)
+  """
+
+proc help*(helpCmd: string, errorCode = QuitSuccess) =
   ## Quits with a formatted help message, sending errorCode
-  quit(helpMessage.unindent(2), errorCode)
+  let helpMessage = unindent(helpCmd & helpGlobal, 2)
+  quit(helpMessage, errorCode)
 
 proc matchesAny*(s: string, patterns: seq[string]): bool =
   ## Returns whether ``s`` matches any glob pattern in ``patterns``.

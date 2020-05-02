@@ -26,17 +26,8 @@ const
     test           As play, but automatically selects the first localvault PC
     unpack         Unpacks a target's installed file into the source tree
     config         Gets, sets, or unsets user-defined configuration options
-
-  Global Options:
-    -h, --help     Display help for nasher or one of its commands
-    -v, --version  Display version information
-
-  Logging:
-    --debug        Enable debug logging
-    --verbose      Enable additional messages about normal operation
-    --quiet        Disable all logging except errors
-    --no-color     Disable color output (automatic if not a tty)
   """
+
 proc ctrlCQuit {.noconv.} =
   quit(QuitFailure)
 

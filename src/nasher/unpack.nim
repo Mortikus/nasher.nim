@@ -42,16 +42,6 @@ const
                    output file.
     --yes, --no    Automatically answer yes/no to the overwrite prompt
     --default      Automatically accept the default answer to the overwrite prompt
-
-  Global Options:
-    -h, --help     Display help for nasher or one of its commands
-    -v, --version  Display version information
-
-  Logging:
-    --debug        Enable debug logging
-    --verbose      Enable additional messages about normal operation
-    --quiet        Disable all logging except errors
-    --no-color     Disable color output (automatic if not a tty)
   """
 
 type

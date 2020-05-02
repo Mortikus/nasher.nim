@@ -13,7 +13,7 @@ const
     local (package-specific) or global (across all packages). Regardless, they
     override default nasher settings.
 
-    Global configuration is stored %APPDATA%\nasher\user.cfg on Windows or in
+    Global configuration is stored in %APPDATA%\nasher\user.cfg on Windows or in
     $XDG_CONFIG/nasher/user.cfg on Linux and Mac. These values apply to all
     packages.
 
@@ -28,16 +28,6 @@ const
     --set          Set <key> to <value> (default when <value> is passed)
     --unset        Delete the key/value pair for <key>
     --list         Lists all key/value pairs in the config file
-
-  Global Options:
-    -h, --help     Display help for nasher or one of its commands
-    -v, --version  Display version information
-
-  Logging:
-    --debug        Enable debug logging
-    --verbose      Enable additional messages about normal operation
-    --quiet        Disable all logging except errors
-    --no-color     Disable color output (automatic if not a tty)
   """
 
 proc parseConfigCmd(opts: Options): string =

@@ -10,16 +10,6 @@ const
     For each target, lists the name, description, source files, and final
     filename of all build targets. These names can be passed to the compile or
     pack commands.
-
-  Global Options:
-    -h, --help     Display help for nasher or one of its commands
-    -v, --version  Display version information
-
-  Logging:
-    --debug        Enable debug logging
-    --verbose      Enable additional messages about normal operation
-    --quiet        Disable all logging except errors
-    --no-color     Disable color output (automatic if not a tty)
   """
 
 proc list*(opts: Options, pkg: PackageRef) =
